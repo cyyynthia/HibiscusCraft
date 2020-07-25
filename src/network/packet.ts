@@ -3,6 +3,8 @@
  * Licensed under the Open Software License version 3.0
  */
 
-import Server from '@hibiscus/server'
+export default abstract class Packet {
+  readonly op: number
 
-Server.getInstance().startup()
+  abstract encode(): Buffer
+}
