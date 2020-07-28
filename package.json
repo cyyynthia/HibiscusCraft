@@ -4,8 +4,8 @@
   "description": "A toy project to re-implement a fully functional Minecraft Server in TypeScript, without dependencies.",
   "main": "src/index.ts",
   "scripts": {
-    "dev": "ts-node src/index.ts",
-    "dev:debug": "node -r ts-node/register --inspect-brk src/index.ts",
+    "dev": "ts-node -r tsconfig-paths/register src/index.ts",
+    "dev:debug": "node -r ts-node/register -r tsconfig-paths/register --inspect-brk src/index.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "Bowser65 <bowoser@weeb.services>",
@@ -13,6 +13,7 @@
   "devDependencies": {
     "@types/node": "^14.0.20",
     "ts-node": "^8.10.2",
+    "tsconfig-paths": "^3.9.0",
     "typescript": "^3.9.6"
   }
 }

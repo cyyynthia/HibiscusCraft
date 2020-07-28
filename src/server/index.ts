@@ -4,6 +4,7 @@
  */
 
 import { createServer, Server, Socket } from 'net'
+import config from '@hibiscus/config'
 import Connection from '@hibiscus/network/connection'
 
 export default class MinecraftServer {
@@ -19,13 +20,21 @@ export default class MinecraftServer {
   }
 
   startup () {
-    this.server.listen(25565, '0.0.0.0') // todo: settings
+    console.log(`Listening on ${config.serverIp}:${config.serverPort}`)
+    this.server.listen(config.serverPort, config.serverIp)
+  }
+
+  shutdown () {
+    for (const connection of this.connections) {
+      connection.disconnect()
+    }
   }
 
   private onConnect (socket: Socket) {
     const connection = new Connection(socket)
     this.connections.push(connection)
-    socket.on('close', () => { // todo: move this to Connection
+
+    connection.on('close', () => {
       this.connections = this.connections.filter(c => c !== connection)
     })
   }
