@@ -119,4 +119,8 @@ export default class FriendlyBuffer {
   toBuffer (): Buffer {
     return this.buffer.slice(0, this.cursor)
   }
+
+  getBuffer (): Buffer {
+    return this.buffer
+  }
 }

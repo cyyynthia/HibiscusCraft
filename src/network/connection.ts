@@ -3,19 +3,24 @@
  * Licensed under the Open Software License version 3.0
  */
 
-import { createCipheriv, createDecipheriv } from 'crypto'
-import { EventEmitter } from 'events'
 import { Socket } from 'net'
+import { EventEmitter } from 'events'
+import { createCipheriv, createDecipheriv, randomBytes } from 'crypto'
 
-import Packet from '@hibiscus/network/packet'
+import Server from '@hibiscus/server'
+import { PlayerProfile, authenticate } from '@hibiscus/mojang'
 import FriendlyBuffer from '@hibiscus/util/buffer'
 import PacketEventsListener from '@hibiscus/network/events'
+import Packet from '@hibiscus/network/packet'
 
 import IntentPacket from '@hibiscus/network/handshake/intent'
-import PongPacket from '@hibiscus/network/status/pong'
 import StatusPacket from '@hibiscus/network/status/status'
+import PongPacket from '@hibiscus/network/status/pong'
+import LoginHelloPacket from '@hibiscus/network/login/hello'
+import KeyPacket from '@hibiscus/network/login/key'
 
 enum State { HANDSHAKING, PLAY, STATUS, LOGIN }
+type Compressor = { inflate: any, deflate: any }
 
 export default class Connection extends EventEmitter {
   private socket: Socket
@@ -23,7 +28,9 @@ export default class Connection extends EventEmitter {
   private encryption: Buffer | false = false
   private compression = false
   private protocol: number
+  playerName: string
   player: null
+  nonce: Buffer
 
   on: PacketEventsListener<this>
 
@@ -31,15 +38,31 @@ export default class Connection extends EventEmitter {
     super()
 
     this.socket = socket
+    this.nonce = randomBytes(4)
     this.state = State.HANDSHAKING
     this.socket.on('data', this.receive.bind(this))
   }
 
-  setState (state: State) {
-    this.state = state
+  setPlayer (player: PlayerProfile) {
+    console.log('no', player)
   }
 
-  receive (packet: Buffer) {
+  setupCompression () {
+    console.log('yes')
+  }
+
+  send (packet: Packet) {
+    if (this.socket.writable) {
+      this.socket.write(this.encodePacket(packet))
+    }
+  }
+
+  disconnect () {
+    // todo: send msg n all
+    this.socket.end()
+  }
+
+  private receive (packet: Buffer) {
     const packets = this.decodePacket(packet)
     for (const packet of packets) {
       switch (this.state) {
@@ -59,17 +82,6 @@ export default class Connection extends EventEmitter {
     }
   }
 
-  send (packet: Packet) {
-    if (this.socket.writable) {
-      this.socket.write(this.encodePacket(packet))
-    }
-  }
-
-  disconnect () {
-    // todo: send msg n all
-    this.socket.end()
-  }
-
   private handleHandshake (packet: FriendlyBuffer) {
     if (packet.readVarInt() !== 0) {
       this.socket.end()
@@ -77,11 +89,10 @@ export default class Connection extends EventEmitter {
 
     const intentPacket = new IntentPacket(packet)
     this.protocol = intentPacket.protocol
-    console.log(this.protocol)
     if (intentPacket.intent === 1) {
-      this.setState(State.STATUS)
+      this.state = State.STATUS
     } else if (intentPacket.intent === 2) {
-      this.setState(State.LOGIN)
+      this.state = State.LOGIN
     } else {
       this.socket.end()
     }
@@ -108,7 +119,31 @@ export default class Connection extends EventEmitter {
   }
 
   private handleLogin (packet: FriendlyBuffer) {
+    const op = packet.readVarInt()
+    switch (op) {
+      case 0:
+        this.playerName = packet.readUtf(16)
+        this.send(new LoginHelloPacket(this.nonce))
+      break
+      case 1:
+        this.authenticate(new KeyPacket(packet))
+      break
+      default:
+        this.disconnect() // todo: err message
+      break
+    }
+  }
 
+  private async authenticate (packet: KeyPacket) {
+    try {
+      if (!Server.getInstance().decrypt(packet.nonce).equals(this.nonce)) throw new Error()
+      this.encryption = Server.getInstance().decrypt(packet.privateKey)
+      const profile = await authenticate(this.playerName, this.encryption, Server.getInstance().publicKey)
+      this.setupCompression()
+      this.setPlayer(profile)
+    } catch (e) {
+      return this.disconnect() // 'Authentication failed.')
+    }
   }
 
   private decodePacket (packet: Buffer): FriendlyBuffer[] { // todo: legacy versions stuff
@@ -141,14 +176,14 @@ export default class Connection extends EventEmitter {
     const length = buffer.length
     const vil = FriendlyBuffer.getVarIntSize(length)
     if (vil > 3) throw new Error('Too large')
-  
-    const fbuf = new FriendlyBuffer(Buffer.alloc(buffer.length + 3))
-    fbuf.writeVarInt(length)
-    fbuf.writeBytes(buffer)
-    buffer = fbuf.toBuffer()
 
     if (this.compression) {
 
+    } else {
+      const fbuf = new FriendlyBuffer(Buffer.alloc(buffer.length + 3))
+      fbuf.writeVarInt(length)
+      fbuf.writeBytes(buffer)
+      buffer = fbuf.toBuffer()
     }
 
     if (this.encryption) {

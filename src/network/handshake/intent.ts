@@ -3,7 +3,6 @@
  * Licensed under the Open Software License version 3.0
  */
 
-import Packet from '@hibiscus/network/packet'
 import FriendlyBuffer from '@hibiscus/util/buffer'
 
 export default class IntentPacket {
