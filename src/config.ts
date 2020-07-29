@@ -11,7 +11,12 @@ export interface Config {
   allowCrack: boolean
   maxPlayers: number
   motd: string | string[]
-  favicon: string
+  favicon: string,
+  dimensions: {
+    overworld: boolean,
+    nether: boolean,
+    end: boolean
+  }
 }
 
 let config: Config = {
@@ -20,7 +25,12 @@ let config: Config = {
   allowCrack: false,
   maxPlayers: 10,
   motd: '§dAn HibiscusCraft server',
-  favicon: join(__dirname, '..', 'files', 'favicon.png')
+  favicon: join(__dirname, '..', 'files', 'favicon.png'),
+  dimensions: {
+    overworld: true,
+    nether: true,
+    end: true
+  }
 }
 
 try {

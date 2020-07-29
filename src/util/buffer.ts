@@ -3,6 +3,8 @@
  * Licensed under the Open Software License version 3.0
  */
 
+import NbtCompound, { deserialize } from '@hibiscus/nbt'
+
 export default class FriendlyBuffer {
   private buffer: Buffer
   private cursor: number = 0
@@ -61,6 +63,17 @@ export default class FriendlyBuffer {
     return this.buffer.slice(this.cursor - length, this.cursor).toString('utf8')
   }
 
+  readNbt (): Record<string, any> | null {
+    const fb =  this.buffer.readInt8(this.cursor)
+    if (fb === 0) {
+      this.cursor++
+      return null
+    }
+    const record = deserialize(this.buffer.slice(this.cursor))
+    this.cursor += record.$$nbtLength
+    return record
+  }
+
   readBytes (length: number) {
     this.cursor += length
     return new FriendlyBuffer(this.buffer.slice(this.cursor - length, this.cursor))
@@ -100,6 +113,14 @@ export default class FriendlyBuffer {
 
     this.writeVarInt(bytes.length)
     this.writeBytes(bytes)
+  }
+
+  writeNbt (compound: NbtCompound | null) {
+    if (compound === null) {
+      return this.writeIntBE(0, 1)
+    }
+
+    this.writeBytes(compound.toBuffer())
   }
 
   writeBytes (bytes: Buffer) {

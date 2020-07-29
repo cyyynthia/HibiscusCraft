@@ -1,5 +1,10 @@
 {
   "serverIp": "127.0.0.1",
   "serverPort": 25565,
-  "allowCrack": false
+  "allowCrack": false,
+  "dimensions": {
+    "overworld": true,
+    "nether": true,
+    "end": true
+  }
 }

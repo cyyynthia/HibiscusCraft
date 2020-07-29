@@ -1,0 +1,51 @@
+/*
+ * Copyright (c) 2020 Bowser65
+ * Licensed under the Open Software License version 3.0
+ */
+
+import NbtCompound, { NbtType } from '@hibiscus/nbt'
+
+export const Overworld = new NbtCompound()
+Overworld.write(NbtType.BYTE, 'ultrawarm', 0)
+Overworld.write(NbtType.BYTE, 'natural', 1)
+Overworld.write(NbtType.BYTE, 'shrunk', 0)
+Overworld.write(NbtType.BYTE, 'piglin_safe', 0)
+Overworld.write(NbtType.BYTE, 'respawn_anchor_works', 0)
+Overworld.write(NbtType.BYTE, 'bed_works', 1)
+Overworld.write(NbtType.BYTE, 'has_raids', 1)
+Overworld.write(NbtType.BYTE, 'has_skylight', 1)
+Overworld.write(NbtType.BYTE, 'has_ceiling', 0)
+Overworld.write(NbtType.BYTE, 'fixed_time', 0)
+Overworld.write(NbtType.FLOAT, 'ambient_light', 0)
+Overworld.write(NbtType.INT, 'logical_height', 256)
+Overworld.write(NbtType.STRING, 'infiniburn', 'minecraft:infiniburn_overworld')
+
+export const Nether = new NbtCompound()
+Nether.write(NbtType.BYTE, 'ultrawarm', 1)
+Nether.write(NbtType.BYTE, 'natural', 0)
+Nether.write(NbtType.BYTE, 'shrunk', 1)
+Nether.write(NbtType.BYTE, 'piglin_safe', 1)
+Nether.write(NbtType.BYTE, 'respawn_anchor_works', 1)
+Nether.write(NbtType.BYTE, 'bed_works', 0)
+Nether.write(NbtType.BYTE, 'has_raids', 0)
+Nether.write(NbtType.BYTE, 'has_skylight', 0)
+Nether.write(NbtType.BYTE, 'has_ceiling', 1)
+Nether.write(NbtType.INT, 'fixed_time', 18000)
+Nether.write(NbtType.FLOAT, 'ambient_light', 0.1)
+Nether.write(NbtType.INT, 'logical_height', 128)
+Nether.write(NbtType.STRING, 'infiniburn', 'minecraft:infiniburn_nether')
+
+export const End = new NbtCompound()
+End.write(NbtType.BYTE, 'ultrawarm', 0)
+End.write(NbtType.BYTE, 'natural', 0)
+End.write(NbtType.BYTE, 'shrunk', 0)
+End.write(NbtType.BYTE, 'piglin_safe', 0)
+End.write(NbtType.BYTE, 'respawn_anchor_works', 0)
+End.write(NbtType.BYTE, 'bed_works', 0)
+End.write(NbtType.BYTE, 'has_raids', 1)
+End.write(NbtType.BYTE, 'has_skylight', 0)
+End.write(NbtType.BYTE, 'has_ceiling', 0)
+End.write(NbtType.INT, 'fixed_time', 6000)
+End.write(NbtType.FLOAT, 'ambient_light', 0)
+End.write(NbtType.INT, 'logical_height', 256)
+End.write(NbtType.STRING, 'infiniburn', 'minecraft:infiniburn_end')
