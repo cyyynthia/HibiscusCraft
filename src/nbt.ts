@@ -5,7 +5,7 @@
 
 import { gzipSync, gunzipSync } from 'zlib'
 
-export enum NbtType { END, BYTE, SHORT, INT, LONG, FLOAT, DOUBLE, BYTE_ARRAY, STRING, LIST, COMPOUND, INT_ARRAY, LONG_ARRAY }
+export const enum NbtType { END, BYTE, SHORT, INT, LONG, FLOAT, DOUBLE, BYTE_ARRAY, STRING, LIST, COMPOUND, INT_ARRAY, LONG_ARRAY }
 type NbtToJs = {
   [NbtType.END]: never
   [NbtType.BYTE]: number
@@ -16,13 +16,13 @@ type NbtToJs = {
   [NbtType.DOUBLE]: number
   [NbtType.BYTE_ARRAY]: Buffer
   [NbtType.STRING]: string
-  [NbtType.LIST]: NbtListSpec
+  [NbtType.LIST]: NbtListSpec<any>
   [NbtType.COMPOUND]: NbtCompound
   [NbtType.INT_ARRAY]: number[]
   [NbtType.LONG_ARRAY]: bigint[]
 }
 
-export type NbtListSpec = { type: NbtType, values: any[] }
+export type NbtListSpec<T extends NbtType> = { type: T, values: NbtToJs[T][] }
 
 export default class NbtCompound {
   private buffer: Buffer
@@ -31,17 +31,17 @@ export default class NbtCompound {
 
   constructor (name: string = '') {
     this.buffer = Buffer.alloc((2 ** 30) - 1)
-    this.buffer.writeInt8(10, this.cursor++)
+    this.buffer.writeUInt8(10, this.cursor++)
     this.buffer.writeInt16BE(name.length, this.cursor)
-    this.buffer.write(name, this.cursor += 2, 'utf8')
-    this.cursor += name.length
+    const wrote = this.buffer.write(name, this.cursor += 2, 'utf8')
+    this.cursor += wrote
   }
 
   write<T extends NbtType> (type: T, name: string, value: NbtToJs[T]) {
-    this.buffer.writeInt8(type, this.cursor++)
+    this.buffer.writeUInt8(type, this.cursor++)
     this.buffer.writeInt16BE(name.length, this.cursor)
-    this.buffer.write(name, this.cursor += 2, 'utf8')
-    this.cursor += name.length
+    const wrote = this.buffer.write(name, this.cursor += 2, 'utf8')
+    this.cursor += wrote
     this.writeRaw(type, value)
     if (type === NbtType.COMPOUND) {
       this.object[name] = (<NbtCompound>value).object
@@ -50,7 +50,7 @@ export default class NbtCompound {
     }
   }
 
-  private writeRaw (type: NbtType, value: any) {
+  private writeRaw (type: NbtType, value: any, skipName = false) {
     switch (type) {
       case NbtType.BYTE:
         this.buffer.writeInt8(value, this.cursor++)
@@ -76,22 +76,23 @@ export default class NbtCompound {
         this.cursor += 8
         break
       case NbtType.BYTE_ARRAY:
-        this.buffer = Buffer.concat([ this.buffer.slice(0, this.cursor), value ], this.buffer.byteLength)
+        this.buffer.writeInt32BE(value.length, this.cursor)
+        this.buffer = Buffer.concat([ this.buffer.slice(0, this.cursor += 4), value ], this.buffer.byteLength)
         this.cursor += value.byteLength
         break
       case NbtType.STRING:
         this.buffer.writeUInt16BE(value.length, this.cursor)
-        this.buffer.write(value, this.cursor += 2, 'utf8')
-        this.cursor += value.length
+        const wrote = this.buffer.write(value, this.cursor += 2, 'utf8')
+        this.cursor += wrote
         break
       case NbtType.LIST:
         this.buffer.writeInt8(value.type, this.cursor++)
         this.buffer.writeUInt32BE(value.values.length, this.cursor)
         this.cursor += 4
-        value.values.forEach((item: any) => this.writeRaw(value.type, item))
+        value.values.forEach((item: any) => this.writeRaw(value.type, item, true))
         break
       case NbtType.COMPOUND: {
-        const buf = value.toBuffer()
+        const buf = value.toRawBuffer()
         this.buffer = Buffer.concat([ this.buffer.slice(0, this.cursor), buf ], this.buffer.byteLength)
         this.cursor += buf.byteLength
         break
@@ -113,8 +114,14 @@ export default class NbtCompound {
   }
 
   toBuffer () {
-    this.buffer.writeInt8(0, this.cursor++)
-    return this.buffer.slice(0, this.cursor)
+    this.buffer.writeInt8(0, this.cursor)
+    return this.buffer.slice(0, this.cursor + 1)
+  }
+
+  toRawBuffer () {
+    const nameLength = this.buffer.readInt16BE(1)
+    this.buffer.writeInt8(0, this.cursor)
+    return this.buffer.slice(3 + nameLength, this.cursor + 1)
   }
 
   toCompressedBuffer () {
@@ -204,10 +211,10 @@ export function deserialize (buffer: Buffer): Record<string, any> {
     throw new Error('Not a NbtCompound')
   }
 
-  let cursor = 3 + buffer.readUInt16BE(1)
+  const cursor = 3 + buffer.readUInt16BE(1)
   const [ readBytes, object ] = readOne(10, buffer.slice(cursor))
   object.$$name = buffer.slice(3, cursor).toString('utf8')
   object.$$payloadLength = payloadLength
-  object.$$nbtLength = buffer.byteLength
+  object.$$nbtLength = readBytes + cursor
   return object
 }

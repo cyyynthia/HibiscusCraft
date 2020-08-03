@@ -5,7 +5,10 @@
 
 import { createServer, Server, Socket } from 'net'
 import { KeyObject, generateKeyPairSync, privateDecrypt, constants as cryptoConstants } from 'crypto'
+
 import Connection from '@hibiscus/network/connection'
+import PlayerManager from '@hibiscus/server/playerManager'
+import Level from '@hibiscus/world/level'
 import config from '@hibiscus/config'
 
 export default class MinecraftServer {
@@ -16,12 +19,15 @@ export default class MinecraftServer {
   private privateKey: KeyObject
   publicKey: Buffer
 
-  onlineCount: number = 0
+  level: Level
+  playerManager: PlayerManager
 
   private constructor () {
     const keyPair = generateKeyPairSync('rsa', { modulusLength: 1024 })
     this.publicKey = keyPair.publicKey.export({ type: 'spki', format: 'der' })
     this.privateKey = keyPair.privateKey
+    this.level = new Level()
+    this.playerManager = new PlayerManager()
     this.server = createServer(this.onConnect.bind(this))
   }
 
@@ -44,6 +50,7 @@ export default class MinecraftServer {
     const connection = new Connection(socket)
     this.connections.push(connection)
     connection.on('close', () => {
+      if (connection.player) this.playerManager.removePlayer(connection.player)
       this.connections = this.connections.filter(c => c !== connection)
     })
   }

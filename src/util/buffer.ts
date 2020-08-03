@@ -13,30 +13,35 @@ export default class FriendlyBuffer {
     this.buffer = buffer
   }
 
-  isReadable (size: number = 1) {
+  isReadable (size: number = 1): boolean {
     return this.buffer.length - this.cursor - size >= 0
   }
 
-  readableBytes () {
+  readableBytes (): number {
     return this.buffer.length - this.cursor
   }
 
-  readIntBE (byteLength: number) {
+  readIntBE (byteLength: number): number {
     this.cursor += byteLength
     return this.buffer.readIntBE(this.cursor - byteLength, byteLength)
   }
 
-  readUIntBE (byteLength: number) {
+  readUIntBE (byteLength: number): number {
     this.cursor += byteLength
     return this.buffer.readUIntBE(this.cursor - byteLength, byteLength)
   }
 
-  readBigInt64BE () {
+  readBigInt64BE (): bigint {
     this.cursor += 8
     return this.buffer.readBigInt64BE(this.cursor - 8)
   }
 
-  readVarInt () {
+  readFloat (): number {
+    this.cursor += 4
+    return this.buffer.readFloatBE(this.cursor - 4)
+  }
+
+  readVarInt (): number {
     let cur = 0
     let value = 0
     let byte
@@ -51,7 +56,14 @@ export default class FriendlyBuffer {
     return value | 0
   }
 
-  readUtf (maxLength: number) {
+  readUuid (): string {
+    const uid = Buffer.alloc(16)
+    uid.writeBigInt64BE(this.readBigInt64BE())
+    uid.writeBigInt64BE(this.readBigInt64BE(), 8)
+    return uid.toString('hex')
+  }
+
+  readUtf (maxLength: number): string {
     const length = this.readVarInt()
     if (length > maxLength * 4) {
       throw new Error('String too large')
@@ -74,7 +86,7 @@ export default class FriendlyBuffer {
     return record
   }
 
-  readBytes (length: number) {
+  readBytes (length: number): FriendlyBuffer {
     this.cursor += length
     return new FriendlyBuffer(this.buffer.slice(this.cursor - length, this.cursor))
   }
@@ -94,6 +106,11 @@ export default class FriendlyBuffer {
     return this.buffer.writeBigInt64BE(bigint, this.cursor - 8)
   }
 
+  writeFloat (float: number): number {
+    this.cursor += 4
+    return this.buffer.writeFloatBE(float, this.cursor - 4)
+  }
+
   writeVarInt (int: number) {
     do {
       if ((int & 0xFFFFFF80) === 0) {
@@ -105,13 +122,19 @@ export default class FriendlyBuffer {
     } while (true)
   }
 
+  writeUuid (uuid: string) {
+    const buf = Buffer.from(uuid, 'hex')
+    this.writeBigInt64BE(buf.readBigInt64BE(0))
+    this.writeBigInt64BE(buf.readBigInt64BE(8))
+  }
+
   writeUtf (string: string, maxLength: number = 32767) {
     const bytes = Buffer.from(string, 'utf8')
-    if (string.length > maxLength) {
+    if (bytes.byteLength > maxLength) {
       throw new Error('String too large')
     }
 
-    this.writeVarInt(bytes.length)
+    this.writeVarInt(bytes.byteLength)
     this.writeBytes(bytes)
   }
 

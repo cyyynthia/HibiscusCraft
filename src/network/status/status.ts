@@ -21,7 +21,7 @@ export default class StatusPacket extends Packet {
         description: { text: config.motd },
         players: {
           max: config.maxPlayers,
-          online: Server.getInstance().onlineCount,
+          online: Server.getInstance().playerManager.players.length,
           sample: []
         },
         favicon: this.getFavicon()

@@ -5,31 +5,36 @@
 
 import { Socket } from 'net'
 import { EventEmitter } from 'events'
-import { createCipheriv, createDecipheriv, randomBytes } from 'crypto'
+import { inflate, deflate } from 'zlib'
+import { createCipheriv, createDecipheriv, randomBytes, Cipher, Decipher } from 'crypto'
 
 import Server from '@hibiscus/server'
-import { PlayerProfile, authenticate } from '@hibiscus/mojang'
+import { COMPRESSION_THRESHOLD } from '@hibiscus/constants'
+import { authenticate } from '@hibiscus/mojang'
+import Player from '@hibiscus/objects/entities/player'
 import FriendlyBuffer from '@hibiscus/util/buffer'
+
 import PacketEventsListener from '@hibiscus/network/events'
 import Packet from '@hibiscus/network/packet'
-
 import IntentPacket from '@hibiscus/network/handshake/intent'
 import StatusPacket from '@hibiscus/network/status/status'
 import PongPacket from '@hibiscus/network/status/pong'
 import LoginHelloPacket from '@hibiscus/network/login/hello'
 import KeyPacket from '@hibiscus/network/login/key'
+import LoginSuccessPacket from '@hibiscus/network/login/success'
+import LoginCompressionPacket from '@hibiscus/network/login/compression'
 
-enum State { HANDSHAKING, PLAY, STATUS, LOGIN }
-type Compressor = { inflate: any, deflate: any }
+const enum State { HANDSHAKING, PLAY, STATUS, LOGIN }
+type Encryptor = { cipher: Cipher, decipher: Decipher }
 
 export default class Connection extends EventEmitter {
   private socket: Socket
   private state: State
-  private encryption: Buffer | false = false
-  private compression = false
+  private encryptor: Encryptor
+  private compression: boolean
   private protocol: number
+  player: Player | null
   playerName: string
-  player: null
   nonce: Buffer
 
   on: PacketEventsListener<this>
@@ -41,29 +46,25 @@ export default class Connection extends EventEmitter {
     this.nonce = randomBytes(4)
     this.state = State.HANDSHAKING
     this.socket.on('data', this.receive.bind(this))
+    this.socket.on('close', this.disconnect.bind(this))
+    this.compression = false
   }
 
-  setPlayer (player: PlayerProfile) {
-    console.log('no', player)
-  }
-
-  setupCompression () {
-    console.log('yes')
-  }
-
-  send (packet: Packet) {
+  async send (packet: Packet) {
+    const buf = await this.encodePacket(packet)
     if (this.socket.writable) {
-      this.socket.write(this.encodePacket(packet))
+      this.socket.write(buf)
     }
   }
 
   disconnect () {
     // todo: send msg n all
     this.socket.end()
+    this.emit('close')
   }
 
-  private receive (packet: Buffer) {
-    const packets = this.decodePacket(packet)
+  private async receive (packet: Buffer) {
+    const packets = await this.decodePacket(packet)
     for (const packet of packets) {
       switch (this.state) {
         case State.HANDSHAKING:
@@ -106,7 +107,7 @@ export default class Connection extends EventEmitter {
       break
       case 1:
         this.send(new PongPacket(packet.readBigInt64BE()))
-        this.socket.end()
+          .then(() => this.socket.end())
       break
       default:
         this.socket.end()
@@ -115,7 +116,7 @@ export default class Connection extends EventEmitter {
   }
 
   private handlePlay (packet: FriendlyBuffer) {
-
+    console.log(packet.readVarInt())
   }
 
   private handleLogin (packet: FriendlyBuffer) {
@@ -137,23 +138,31 @@ export default class Connection extends EventEmitter {
   private async authenticate (packet: KeyPacket) {
     try {
       if (!Server.getInstance().decrypt(packet.nonce).equals(this.nonce)) throw new Error()
-      this.encryption = Server.getInstance().decrypt(packet.privateKey)
-      const profile = await authenticate(this.playerName, this.encryption, Server.getInstance().publicKey)
-      this.setupCompression()
-      this.setPlayer(profile)
+      const key = Server.getInstance().decrypt(packet.privateKey)
+      const profile = await authenticate(this.playerName, key, Server.getInstance().publicKey)
+      this.encryptor = {
+        cipher: createCipheriv('aes-128-cfb8', key, key),
+        decipher: createDecipheriv('aes-128-cfb8', key, key)
+      }
+
+      this.send(new LoginCompressionPacket())
+      this.compression = true
+
+      this.send(new LoginSuccessPacket(profile))
+
+      const player = new Player(this, profile)
+      this.player = player
+      this.state = State.PLAY
+
+      Server.getInstance().playerManager.summonPlayer(player)
     } catch (e) {
       return this.disconnect() // 'Authentication failed.')
     }
   }
 
-  private decodePacket (packet: Buffer): FriendlyBuffer[] { // todo: legacy versions stuff
-    if (this.encryption) {
-      const cipher = createDecipheriv('aes-128-gcm', this.encryption, this.encryption)
-      packet = Buffer.concat([ cipher.update(packet), cipher.final() ])
-    }
-
-    if (this.compression) {
-
+  private async decodePacket (packet: Buffer): Promise<FriendlyBuffer[]> { // todo: legacy versions stuff
+    if (this.encryptor) {
+      packet = this.encryptor.decipher.update(packet)
     }
 
     const buf = new FriendlyBuffer(packet)
@@ -162,7 +171,17 @@ export default class Connection extends EventEmitter {
       try {
         const n = buf.readVarInt()
         if (buf.readableBytes() < n) break
-        packets.push(buf.readBytes(n))
+        let payload = buf.readBytes(n).getBuffer()
+        if (this.compression) {
+          const buf = new FriendlyBuffer(payload)
+          const length = buf.readVarInt()
+          payload = buf.readBytes(buf.readableBytes()).getBuffer()
+          if (length !== 0) {
+            payload = await this.decompress(payload)
+          }
+        }
+
+        packets.push(new FriendlyBuffer(payload))
       } catch (_) {
         break
       }
@@ -171,26 +190,42 @@ export default class Connection extends EventEmitter {
     return packets
   }
 
-  private encodePacket (packet: Packet): Buffer {
+  private async encodePacket (packet: Packet): Promise<Buffer> {
     let buffer = packet.encode()
-    const length = buffer.length
-    const vil = FriendlyBuffer.getVarIntSize(length)
-    if (vil > 3) throw new Error('Too large')
+    const b = Buffer.alloc(buffer.byteLength + 3)
 
     if (this.compression) {
-
-    } else {
-      const fbuf = new FriendlyBuffer(Buffer.alloc(buffer.length + 3))
-      fbuf.writeVarInt(length)
+      const fbuf = new FriendlyBuffer(b)
+      if (buffer.byteLength > COMPRESSION_THRESHOLD) {
+        fbuf.writeVarInt(buffer.byteLength)
+        buffer = await this.compress(buffer)
+      } else {
+        fbuf.writeVarInt(0)
+      }
       fbuf.writeBytes(buffer)
       buffer = fbuf.toBuffer()
     }
 
-    if (this.encryption) {
-      const cipher = createCipheriv('aes-128-gcm', this.encryption, this.encryption)
-      buffer = Buffer.concat([ cipher.update(buffer), cipher.final() ])
+    const length = buffer.byteLength
+    const vil = FriendlyBuffer.getVarIntSize(length)
+    if (vil > 3) throw new Error('Too large')
+    const fbuf = new FriendlyBuffer(b)
+    fbuf.writeVarInt(length)
+    fbuf.writeBytes(buffer)
+    buffer = fbuf.toBuffer()
+
+    if (this.encryptor) {
+      buffer = this.encryptor.cipher.update(buffer)
     }
 
     return buffer
+  }
+
+  private compress (buffer: Buffer): Promise<Buffer> {
+    return new Promise<Buffer>(resolve => deflate(buffer, (_, res) => resolve(res)))
+  }
+
+  private decompress (buffer: Buffer): Promise<Buffer> {
+    return new Promise<Buffer>(resolve => inflate(buffer, (_, res) => resolve(res)))
   }
 }

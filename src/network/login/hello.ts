@@ -3,12 +3,8 @@
  * Licensed under the Open Software License version 3.0
  */
 
-import { readFileSync } from 'fs'
-
-import config from '@hibiscus/config'
 import Server from '@hibiscus/server'
 import Packet from '@hibiscus/network/packet'
-import { PROTOCOL_VERSION, GAME_VERSION } from '@hibiscus/constants'
 
 export default class LoginHelloPacket extends Packet {
   private nonce: Buffer

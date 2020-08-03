@@ -12,9 +12,9 @@ export interface PlayerProfile {
   name: string,
   properties: [
     {
-      name: 'textures',
+      name: string,
       value: string,
-      signature: string
+      signature?: string
     }
   ]
 }
