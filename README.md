@@ -11,11 +11,11 @@ TL;DR: I want to be as close as possible to Vanilla Minecraft, + some anti-cheat
 I want to craft (notice the pun, haha very fun) the same generator as Minecraft', but in TS. For the same seed, I want
 to get the exact same world.
 
-### Mob IA
+### Mob AI
 Having the exact same behavior will be really difficult but I want to try and see if I can achieve it.
 
 ### Various game mechanics
-Redstone, water, ... should behave the same as in vanilla' Minecraft
+Redstone, water, ... should behave the same as in vanilla, Minecraft
 
 ### Built-in anti-cheat
 We all know that Minecraft is client-sided for way too many things. I want to try and see if I can reduce the amount
